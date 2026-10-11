@@ -54,6 +54,8 @@ idf.py -p PORT flash monitor
 
 GPIO1 is a **3.3 V logic signal only**. Do not connect it directly to the actuator's motor or to a button/sensor line whose voltage has not been measured. Use a correctly sized MOSFET or optocoupler. GPIO1 is configured low before the Zigbee stack starts.
 
+GPIO3 and GPIO14 are reserved by the XIAO ESP32-C6 RF switch. The firmware drives both low to enable the onboard ceramic antenna.
+
 The firmware is an always-on Zigbee router for prompt command delivery. This is simple and responsive, but it consumes more power than a sleepy end device.
 
 ## Zigbee identity
@@ -63,3 +65,4 @@ The firmware is an always-on Zigbee router for prompt command delivery. This is 
 - Endpoint: `10`
 - Device type: HA on/off light
 - Input command: On/Off cluster (`0x0006`) `ON`
+- Channel scan: channel 11 first, then channels 12–26

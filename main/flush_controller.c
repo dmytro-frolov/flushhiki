@@ -10,13 +10,16 @@
 #include "nvs_flash.h"
 
 #define FLUSH_GPIO GPIO_NUM_1
+#define RF_SWITCH_POWER_GPIO GPIO_NUM_3
+#define RF_SWITCH_SELECT_GPIO GPIO_NUM_14
 #define USER_LED_GPIO GPIO_NUM_15
 #define FLUSH_PULSE_MS 500
 #define FLUSH_ENDPOINT 10
 
 #define MANUFACTURER_NAME "\x09" "Flushhiki"
 #define MODEL_IDENTIFIER "\x10" "CatToiletFlushV1"
-#define PRIMARY_CHANNEL_MASK ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK
+#define PRIMARY_CHANNEL_MASK (1U << 11)
+#define SECONDARY_CHANNEL_MASK (ESP_ZB_TRANSCEIVER_ALL_CHANNELS_MASK & ~PRIMARY_CHANNEL_MASK)
 
 #define ZB_ROUTER_CONFIG()                                      \
     {                                                           \
@@ -134,7 +137,8 @@ void esp_zb_app_signal_handler(esp_zb_app_signal_t *signal)
             ESP_LOGI(TAG, "Joined Zigbee network on channel %d, short address 0x%04x",
                      esp_zb_get_current_channel(), esp_zb_get_short_address());
         } else {
-            ESP_LOGW(TAG, "Network join failed; retrying");
+            ESP_LOGW(TAG, "Network join failed: %s (0x%x); retrying",
+                     esp_err_to_name(signal->esp_err_status), signal->esp_err_status);
             esp_zb_scheduler_alarm(start_commissioning, ESP_ZB_BDB_MODE_NETWORK_STEERING, 1000);
         }
         break;
@@ -168,7 +172,9 @@ static void zigbee_task(void *arg)
 
     ESP_ERROR_CHECK(esp_zb_device_register(endpoints));
     esp_zb_core_action_handler_register(action_handler);
-    esp_zb_set_primary_network_channel_set(PRIMARY_CHANNEL_MASK);
+    ESP_ERROR_CHECK(esp_zb_set_primary_network_channel_set(PRIMARY_CHANNEL_MASK));
+    ESP_ERROR_CHECK(esp_zb_set_secondary_network_channel_set(SECONDARY_CHANNEL_MASK));
+    ESP_LOGI(TAG, "Scanning Zigbee channel 11 first, then channels 12-26");
     ESP_ERROR_CHECK(esp_zb_start(false));
     esp_zb_stack_main_loop();
 }
@@ -176,11 +182,16 @@ static void zigbee_task(void *arg)
 void app_main(void)
 {
     gpio_config_t output_config = {
-        .pin_bit_mask = (1ULL << FLUSH_GPIO) | (1ULL << USER_LED_GPIO),
+        .pin_bit_mask = (1ULL << FLUSH_GPIO) | (1ULL << RF_SWITCH_POWER_GPIO) |
+                        (1ULL << RF_SWITCH_SELECT_GPIO) | (1ULL << USER_LED_GPIO),
         .mode = GPIO_MODE_OUTPUT,
     };
     ESP_ERROR_CHECK(gpio_config(&output_config));
     set_output(false);
+
+    /* XIAO ESP32-C6: power the RF switch and select the onboard ceramic antenna. */
+    gpio_set_level(RF_SWITCH_POWER_GPIO, 0);
+    gpio_set_level(RF_SWITCH_SELECT_GPIO, 0);
 
     esp_err_t err = nvs_flash_init();
     if (err == ESP_ERR_NVS_NO_FREE_PAGES || err == ESP_ERR_NVS_NEW_VERSION_FOUND) {
